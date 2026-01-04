@@ -217,17 +217,49 @@ async def handle_lasso_interaction(session_id: str,
     
 @app.get("/reset_interactions/{session_id}")
 def handle_reset_interactions(session_id: str):
-    
+
     # Get the current segmentator session
     seg = session_manager.get_session(session_id)
     if seg is None:
        return {"error": "Invalid session"}
-   
+
     # Handle the interaction
     seg.reset_interactions()
-    
+
     # Base64 encode the segmentation result
     return { "status": "success" }
+
+
+@app.post("/update_label_state/{session_id}")
+async def handle_update_label_state(session_id: str,
+                                    file: UploadFile = File(...),
+                                    metadata: str = Form(...)):
+    """
+    Upload the current label state to nnInteractive. This should be called:
+    1. When switching between labels to restore the previous state
+    2. After undo operations in ITK-Snap to sync the model with the current state
+    """
+
+    # Get the current segmentator session
+    seg = session_manager.get_session(session_id)
+    if seg is None:
+       return {"error": "Invalid session"}
+
+    # Read label state image into memory
+    contents_gzipped = await file.read()
+    t0 = time.perf_counter()
+    sitk_image = read_sitk_image(contents_gzipped, metadata)
+    t1 = time.perf_counter()
+
+    # Update the label state in the session
+    seg.update_label_state(sitk_image)
+    t2 = time.perf_counter()
+
+    print(f'handle_update_label_state timing:')
+    print(f'  t[decode] = {t1-t0:.6f}')
+    print(f'  t[update] = {t2-t1:.6f}')
+
+    return { "status": "success", "message": "Label state updated" }
     
     
 @app.get("/end_session/{session_id}")

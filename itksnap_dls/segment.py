@@ -104,7 +104,21 @@ class SegmentSession:
         self.target_tensor = torch.zeros(self.target_tensor.shape, dtype=torch.uint8)
         self.session.set_target_buffer(self.target_tensor)
         self.session.reset_interactions()
-        
+
+    def update_label_state(self, sitk_image):
+        """Update the target buffer with the current label state from ITK-Snap.
+        This allows nnInteractive to see the current segmentation when switching labels or after undo."""
+        img = sitk.GetArrayFromImage(sitk_image)
+
+        # Validate dimensions match
+        if img.shape != self.target_tensor.shape:
+            raise ValueError(f"Label state shape {img.shape} does not match target tensor shape {self.target_tensor.shape}")
+
+        # Update the target tensor with the label state
+        self.target_tensor = torch.from_numpy(img).to(dtype=torch.uint8)
+        self.session.set_target_buffer(self.target_tensor)
+        self.session.reset_interactions()
+
     def get_result(self):
         result = sitk.GetImageFromArray(self.target_tensor)
         result.CopyInformation(self.input_image)
