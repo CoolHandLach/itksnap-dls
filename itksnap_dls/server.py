@@ -13,6 +13,7 @@ import time
 import json
 import asyncio
 import logging
+import torch
 from contextlib import asynccontextmanager
 
 # API debugging
@@ -124,24 +125,32 @@ async def upload_raw(session_id: str, file: UploadFile = File(...), metadata: st
 
 @app.get("/process_point_interaction/{session_id}")
 def handle_point_interaction(session_id: str, x: int, y: int, z: int, foreground: bool = False):
-    
+
     # Get the current segmentator session
     seg = session_manager.get_session(session_id)
     if seg is None:
        return {"error": "Invalid session"}
-   
+
+    # Debug: Log state of target_tensor before interaction
+    target_nonzero = int(torch.count_nonzero(seg.target_tensor).item())
+    print(f'[DEBUG] Point interaction at ({x},{y},{z}), foreground={foreground}')
+    print(f'[DEBUG] Target tensor has {target_nonzero} non-zero voxels before interaction')
+
     # Handle the interaction
     t0 = time.perf_counter()
     seg.add_point_interaction([x,y,z], include_interaction=foreground)
     t1 = time.perf_counter()
-    
+
     # Base64 encode the segmentation result
     arr = np.where(sitk.GetArrayFromImage(seg.get_result()) > 0, 1, 0).astype(np.int8)
+    result_nonzero = int(np.count_nonzero(arr))
+    print(f'[DEBUG] Result has {result_nonzero} non-zero voxels')
+
     arr_gz = gzip.compress(arr.tobytes())
     print(f'arr_gz size: {len(arr_gz)}, first byte: {arr_gz[0]:d}, second byte: {arr_gz[1]:d}')
     arr_b64 = base64.b64encode(arr_gz) #.decode("utf-8")
     t2 = time.perf_counter()
-    
+
     print(f'handle_point_interaction timing:')
     print(f'  t[nnInteractive] = {t1-t0:.6f}')
     print(f'  t[encode] = {t2-t1:.6f}')
